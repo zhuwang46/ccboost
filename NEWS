@@ -1,0 +1,10 @@
+                CHANGES in `ccboost' VERSION 0.1_1.2   (2021-01-17)
+
+  o  change R/ccboost.R: objective="binary:logitraw" is very slow, was changed to "binary:logistic". Consequently, predict values are probabilities, which are changed to linear predictors
+  o  R CMD build --compact-vignettes="gs+qpdf" ccboost
+                
+                CHANGES in `ccboost' VERSION 0.1_1.3   (2021-01-19)
+
+  o  change R/ccboost.R: objective="binary:logitraw" for binary classification with eval_metric="logloss". Consequently, predict values are linear predictors
+  o  add reference
+  o  change dontrun to dontest for examples in man/ccboost.Rd

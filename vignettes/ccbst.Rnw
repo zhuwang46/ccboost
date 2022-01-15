@@ -1,0 +1,384 @@
+\documentclass[nojss]{jss}
+\renewcommand\vec{\mathbf}
+\newcommand{\bq}{\begin{eqnarray}}
+\newcommand{\bqn}{\begin{eqnarray*}} \newcommand{\enq}{\end{eqnarray}}
+\newcommand{\enqn}{\end{eqnarray*}}
+\newcommand{\btheta} {\mbox{\boldmath $\theta$}}
+\newcommand{\hbtheta}{\mbox{\boldmath ${\hat \theta}$}}
+
+\usepackage{bm, amsmath,latexsym,amsthm,amssymb,amsbsy,amsfonts,lscape,ctable, enumerate, mathtools}
+\usepackage{algorithm, algorithmic}
+%\usepackage{algpseudocode}
+%\usepackage[format=normal,font=normalsize,labelfont=bf]{caption} 
+%\usepackage[square,numbers]{natbib}
+\usepackage{natbib}
+\usepackage[english]{babel}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}[theorem]
+\DeclareMathOperator\erf{erf}
+\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}
+\DeclareMathOperator*{\argmin}{argmin} % thin space, limits underneath in displays
+%\usepackage{/usr/lib/R/share/texmf/Sweave}
+%%\VignetteIndexEntry{Unified Robust Boosting: ccboost R package}
+ 
+%\SweaveOpts{engine=R,eps=false,strip.white=true, width=6, height=6}
+%\SweaveOpts{engine=R,eps=false,prefix.string=fig/plot,strip.white=true,  width=6,height=6}
+\SweaveOpts{keep.source=FALSE}
+\author{Zhu Wang\\UT Health San Antonio}
+\title{Unified Robust Boosting}
+
+\Plainauthor{Zhu Wang}
+\Plaintitle{Unified Robust Boosting}
+\Shorttitle{Unified Robust Boosting}
+\Abstract{
+Boosting is a popular machine learning algorithm in regression and classification problems. Boosting can combine a sequence of regression trees to obtain accurate prediction. In the presence of outliers, traditional boosting, based on optimizing convex loss functions, may show inferior results. In this article, a unified robust boosting is proposed for more resistant estimation. The method utilizes a recently developed concave-convex family for robust estimation, composite optimization by conjugation operator, and functional decent boosting. As a result, an
+iteratively reweighted boosting algorithm can be conveniently constructed with existing software. Applications in robust regression, classification and Poisson regression are demonstrated in the \proglang{R} package \pkg{ccboost}. 
+}
+\Keywords{Robust method, CC-family, CC-estimation, CC-boosting, boosting, COCO}
+\Plainkeywords{Robust method, CC-family, CC-estimation, CC-boosting, boosting, COCO}
+ \Address{
+ Zhu Wang\\
+ Department of Population Health Sciences\\
+ UT Health San Antonio\\
+ USA\\
+ E-mail: \email{zhuwang@gmail.com}
+}
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Boosting is a powerful supervised machine learning algorithm. As an ensemble method, boosting combines many weak learners to generate a strong prediction. As a functional decent method, boosting has a wide applications in regression and classification problems. \citet{Frie:2001, friedman2000additive, Buhl:Hoth:2007} discussed boosting for a variety of convex loss functions. To deal with outliers, robust estimation has been brought into boosting in order to provide more accurate
+estimation. \citet{wang2018quadratic, wang2018robust} proposed robust functional gradient boosting for nonconvex loss functions. These methods applied majorization-minimization (MM) scheme, an extension of the popular expectation-maximization (EM) algorithm in statistics. 
+
+Recently, \citet{wang2020unified} innovatively proposed a unified robust loss function family, the concave convex (CC) family, and introduced the composite optimization by conjugation operator (COCO) to obtain the CC-estimation. The CC-family includes traditional robust loss functions such as the Huber loss, robust hinge loss for support vector machine, and robust exponential family for generalized linear models. The COCO algorithm is an iteratively 
+reweighted estimation and can be conveniently implemented from the existing methods and software. In this article, we integrate the COCO and boosting to obtain CC-estimation in the context of function estimation, which is more broad than the linear predictor function in \citet{wang2020unified}. For instance, the CC-boosting algorithm permits function space derived from the regression trees. We
+illustrate the proposed algorithm through the \pkg{ccboost} \proglang{R} package with applications to robust exponential family, including regression, binary classification and Poisson regression. 
+\section{Robust CC-boosting}\label{sec:robust}
+\subsection{CC-function estimation}\label{sec:dcb}
+To unify robust estimation, \citet{wang2020unified} proposed the concave convex (CC) family with functions $\Gamma$ satisfying the following conditions:
+  \begin{enumerate}[i.]
+      \item $\Gamma=g\circ s$
+      \item $g$ is a nondecreasing closed concave function on range $s$
+      \item $\partial (-g(z)) \ \forall z \in \text{range } s$ is nonempty and   bounded
+      \item $s$ is convex on $\mathbb{R}$.
+  \end{enumerate}
+  Table~\ref{tab:gs} lists some concave component. 
+\begin{table}
+     \begin{center}
+ \begin{tabular}{lc}
+     \hline\hline
+   Concave& $g(z)$\\
+ \hline
+      hcave&$\begin{cases}
+             z & \text { if } z \leq \sigma^2/2\\ 
+             \sigma (2z)^{\frac{1}{2}}-\frac{\sigma^2}{2} &\text{ if } z > \sigma^2/2
+         \end{cases}$ \\
+     acave&\hspace{3mm}$\begin{cases}
+          {\sigma^2}(1-\cos(\frac{(2z)^{\frac{1}{2}}}{{\sigma}})) & \text{ if } z \leq \sigma^2\pi^2/2\\
+          2\sigma^2 &\text{ if } z > \sigma^2\pi^2/2\\
+     \end{cases}$
+     \\
+     bcave&\hspace{3mm}$\frac{\sigma^2}{6}\left(1-(1-\frac{2z}{\sigma^2})^3 I(z \leq \sigma^2/2)\right)$  \\
+     ccave&\hspace{3mm}$\sigma^2\left(1-\exp(\frac{-z}{\sigma^2})\right)$ \\
+      dcave&\hspace{3mm}$\frac{1}{1-\exp(-\sigma)}\log(\frac{1+z}{1+z\exp(-\sigma)})$ \\
+      ecave&\hspace{3mm}$\begin{cases}
+      \frac{2\exp(-\frac{\delta}{\sigma})}{\sqrt{\pi\sigma\delta}}z &\text{ if }z\leq \delta\\
+      \erf(\sqrt{\frac{z}{\sigma}})-\erf(\sqrt{\frac{\delta}{\sigma}})+\frac{2\exp(-\frac{\delta}{\sigma})}{\sqrt{\pi\sigma\delta}}\delta &\text{ if } z>\delta
+      \end{cases}$\\
+     gcave&\hspace{3mm}
+      $\begin{cases}
+      \frac{\delta^{\sigma-1}}{(1+\delta)^{\sigma+1}}z &\text{ if } z \leq \delta\\
+      \frac{1}{\sigma}(\frac{z}{1+z})^{\sigma}-\frac{1}{\sigma}(\frac{\delta}{1+\delta})^{\sigma}+\frac{\delta^{\sigma}}{(1+\delta)^{\sigma+1}} &\text{ if }z   > \delta
+      \end{cases}$ \\
+      &where
+      $\delta=
+      \begin{cases}
+      \to 0+ &\text{ if } 0 < \sigma < 1\\ 
+      \frac{\sigma-1}{2} &\text{ if }\sigma \geq 1
+      \end{cases}
+      $\\
+     tcave&\hspace{3mm}$\min(\sigma, z), \quad \sigma \geq 0$ \\
+ \hline
+ \hline
+ \end{tabular}
+     \end{center}
+\caption{Concave component with $\sigma > 0$ except for tcave with $\sigma \geq 0$.} 
+ \label{tab:gs}
+ \end{table}
+The convex component includes common loss functions in regression and classification such as least squares and logistic function. More broadly, the convex component contains the negative log-likelihood function in the exponential family adopted by the generalized linear models. Since the convex component can be non-differentiable, subgradient and subdifferential are useful tools. For instance, the \code{tcave} is not differentiable at $z=\sigma$, but is quite
+useful to truncate loss functions.
+Given a set of observations $(\vec x_i, y_i), i=1, ..., n$ where $y_i \in \mathbb R$ and $\vec x_i = (x_{i1}, ..., x_{ip})^\intercal \in \mathbb R ^p$, denote $\Omega$ the linear span of a set $H$ of base learners including regression trees or linear predictor functions.
+Denote $\vec f=(f(\vec x_1), ..., f(\vec x_n))^\intercal, \vec f \in \Omega$. We aim to minimize an empirical loss function 
+\begin{equation}\label{eqn:emlos}
+    \sum_{i=1}^n \ell(y_i, f(\vec x_i)).
+\end{equation}
+Here $\ell$ is a member of the CC-family, $\ell=g\circ s=g(s(u))=g(s(y, f))$. To simplify notations, $f$ and $f(\vec x)$ are interchanged sometimes. 
+For $i=1, ..., n$, $u_i$ is defined below:
+\begin{equation}\label{eqn:ui}
+   u_i=
+   \begin{cases}
+     y_i-f_i, &\text{ for regression,}\\
+     y_i f_i,  &\text{ for classification with $y_i \in [-1, 1]$},\\
+     f_i,      &\text{ for exponential family.}
+   \end{cases}
+ \end{equation}
+Robust function estimation can be accomplished by the following algorithm.  
+\begin{algorithm}[!htbp]
+  \begin{algorithmic}[1]
+    \caption{CC-Function Estimation Algorithm}\label{alg:ccf}
+    \STATE \textbf{Input:} training samples $\{(\vec x_1, y_1), ..., (\vec x_n, y_n)\}$, 
+      concave component $g$ with parameter $\sigma$, convex component $s$, starting point $\vec f^{(0)}$ and iteration count $K$. 
+    % \STATE Set $\delta > \epsilon$ for a pre-specified small value $\epsilon > 0 $ for convergence criteria.
+    \FOR{$k=1$ to $K$}
+%    \STATE \textbf{Initialization:} ${f}_0(x)=f^{(k-1)}$. 
+      \STATE %Compute $u_i^{(k)}$ in (\ref{eqn:ui}) based on the current $f_i^{(k-1)}$, 
+      Compute $z_i=s(y_i, f_i^{(k-1)}), i=1, ..., n$
+     \STATE Compute subgradient $v_i^{(k)}$ via $v_i^{(k)}\in \partial(-g(z_i))$ or    $z_i \in \partial \varphi(v_i^{(k)}), i=1, ..., n$
+      \STATE Compute $\vec f^{(k)}=\argmin_{\vec f \in \Omega} \sum_{i=1}^n s(y_i, f_i)(-v_i^{(k)})$
+    \ENDFOR
+      \STATE \textbf{Output:} $v_i^{(K)}$ and $\vec f^{(K)}$. 
+  \end{algorithmic}
+\end{algorithm}
+
+ We have the convergence results for the COCO algorithm.
+ \begin{theorem}\label{thm:conv1}
+   Suppose that $g$ is a concave component in the CC-family, and $g$ is bounded below.
+   %$z_i$ is an interior point of $\textup{dom } g$ or $v_i^{(k+1)}$ is an interior point of $\textup{dom } \varphi$.
+             The loss function values $\rho(\vec f^{(k)})\triangleq\sum_{i=1}^n\ell(y_i, f_i^{(k)})$
+   generated by Algorithm~\ref{alg:ccf} are nonincreasing and converge.
+     \end{theorem}
+
+This result is a generalization of Theorem 4 in \citet{wang2020unified} in which the function is restricted to a linear predictor function. Here we study more broadly defined function spaces. On the other hand, if $H$ is a space of linear models, Theorem~\ref{thm:conv1} indeed coincides with the results in  \citet{wang2020unified}. The proof follows the same argument of Theorem 4 in \citet{wang2020unified}, hence only a sketch is outlined. Define the surrogate loss function:
+\begin{equation*}
+     Q(\vec f|\vec f^{(k)})=\sum_{i=1}^ns(y_i, f_i)(-v_i^{(k+1)})+\varphi(v_i^{(k+1)}). 
+ \end{equation*}
+Apply the well-known results on the conjugation operator, we then have
+\begin{equation}\label{eqn:mm6}
+    \rho(\vec f^{(k+1)}) \leq Q(\vec f^{(k+1)}|\vec f^{(k)}) \leq            Q(\vec{f}^{(k)}|\vec{f}^{(k)}) 
+     =\rho(\vec f^{(k)}). 
+ \end{equation}
+ Step 5 in the algorithm is equivalent to minimizing $Q(\vec f|\vec f^{(k)})$ since $\varphi(v_i^{(k+1)})$ is a constant with respect to $\vec f$. The conclusion of the theorem follows.
+
+\subsection{Boosting algorithm for function estimation}
+An important question is how to compute step 5 in Algorithm~\ref{alg:ccf}. Here we adopt weighted boosting algorithm. Boosting as a method for function estimation has been well studied by  \citet{friedman2000additive, Frie:2001}. %But, does boosting converge to the objective function in step 5? 
+Boosting can be utilized to fit a variety of models with different base learners, including linear least squares, smoothing splines and regression trees \citep{Buhl:Hoth:2007, wang2018robust}. For ease of notation, we first consider unweighted estimation:
+\begin{equation}
+\argmin_{\vec f \in \Omega} \sum_{i=1}^n s(y_i, f_i).
+\end{equation}
+In a boosting algorithm, the solution is an additive model given by
+\begin{equation}\label{eqn:add}
+        \hat{f}_i = F_M(\vec x_i)=\sum_{i=1}^M t_m(\vec x_i),
+\end{equation}
+where $F_M(\vec x_i)$ is stagewisely constructed by sequentially adding an update $t_m(\vec x_i)$ to the current estimate $F_{m-1}(\vec x_i)$:
+\begin{equation}\label{eqn:boost}
+        F_m(\vec x_i)= F_{m-1}(\vec x_i) + t_m(\vec x_i), m=1, ..., M.
+\end{equation}
+
+There are different ways to compute $\vec t_m(\vec x)=(t_m(\vec x_1), ..., t_m(\vec x_n))^\intercal$: gradient and Newton-type update are the most popular \citep{sigrist2020gradient}. When the second derivative of loss function exists, the Newton-type update is preferred over gradient update to achieve fast convergence: 
+\begin{equation}
+    \vec t_m(\vec x) = \argmin_{\vec f \in H} \sum_{i=1}^n h_{m, i}(-\frac{d_{m,i}}{h_{m,i}}-f(x_i))^2,
+\end{equation}
+where the first and second derivatives of the loss function $s$ for observations $i$ are given by:
+\begin{equation}
+    d_{m,i}=\frac{\partial}{\partial f} s(y_i, f)|_{f=F_{m-1}(x_i)},
+\end{equation}
+\begin{equation}
+    h_{m,i}=\frac{\partial^2}{\partial f^2} s(y_i, f)|_{f=F_{m-1}(x_i)}.
+\end{equation}
+For quadratic loss $s(y_i, f)=\frac{(y_i-f)^2}{2}$, we obtain $h_{m,i}=1$. In this case, the Newton-update becomes the gradient update. Furthermore, the weighted minimization problem in step 5 of Algorithm~\ref{alg:ccf} can be solved with the weighted boosting algorithm.
+\subsection{Penalized estimation}
+To avoid overfitting, we can add the objective function with a regularization term:
+\begin{equation}\label{eqn:emlos1}
+    \sum_{i=1}^n \ell(y_i, \hat f_i) + \sum_{m=1}^M \Lambda(t_m),
+\end{equation}
+where $\Lambda$ penalizes the model complexity. If $H$ is the space of linear regression with a $p$-dimensional predictor, i.e., $t_m(\vec x_i) = \vec x_i^\intercal \bm\beta_m, \bm\beta_m=(\beta_{1m}, ..., \beta_{pm})^\intercal$, denote
+\begin{equation}
+    \Lambda(t_m)=\frac{1}{2}\lambda\sum_{j=1}^p\beta_{jm}^2 + \alpha\sum_{j=1}^p|\beta_{jm}|,
+\end{equation}
+where $\lambda \geq 0, \alpha \geq 0$. Note that $\Lambda(t_m)$ provides shrinkage estimators and can conduct variable selection.
+Suppose that $H$ is the space of regression trees. Each regression tree splits the whole predictor space into disjoint hyper-rectangles with sides parallel to the coordinate axes \citep{wang2018robust}. 
+Specifically, denote the hyper-rectangles in the $m$-th boosting iteration $R_{jm}, j=1, ..., J$. Let $t_m(\vec x_i)=\beta_{jm}, \vec x_i \in R_{jm}, i=1, ..., n, j=1, ..., J$. With $\gamma \geq 0$, the penalty can be defined as in \citet{chen2016xgboost}:
+\begin{equation}
+    \Lambda(t_m)=\gamma J + \frac{1}{2}\lambda\sum_{j=1}^p\beta_{jm}^2 + \alpha\sum_{j=1}^p|\beta_{jm}|.
+\end{equation}
+A different penalized estimation is to implement a shrinkage parameter $0 < \nu \leq 1$ in the update (\ref{eqn:boost}):
+\begin{equation}
+        F_m(\vec x_i)= F_{m-1}(\vec x_i) + \nu t_m(\vec x_i), m=1, ..., M.
+\end{equation}
+\subsection{Implementation and tuning parameter selection}
+In summary, we use Algorithm~\ref{alg:ccf} coupled with the boosting algorithm to minimize the following objective function:
+\begin{equation}\label{eqn:emlos3}
+    \sum_{i=1}^n \ell(y_i, \hat{f_i}),
+\end{equation}
+where $\hat{f_i}$ is given by (\ref{eqn:add}). 
+There are two layers of iterations: the outer layer is the CC iteration and the inner layer is the boosting iterations. An early stop of iterations in boosting doesn't guarantee convergence. On the other hand, the output $\vec f^{(K)}$ may overfit the data. In this case, we may consider a two stage process: In the first stage, apply Algorithm~\ref{alg:ccf} to obtain optimal weights of observations. In the second stage, we can use a data-driven method such as cross-validation to select optimal boosting iteration $M$, penalty numbers $\gamma$ for trees, $\lambda$ and $\alpha$. The same strategy can also be applied to the robust parameter $\sigma$. However, since this parameter is typically considered a hyperparameter, a more computationally convenient approach in the literature is to conduct estimation for different values of $\sigma$ and compare the results. One can begin with a large value $\sigma$ with less robust estimation, and move towards smaller value $\sigma$ for more robust results.  
+
+The source version of the \pkg{ccboost} package is freely available from the Comprehensive \proglang{R} Archive Network (\url{http://CRAN.R-project.org}). The reader can install the package directly from the \proglang{R} prompt via
+<<echo=false,results=hide>>=
+options(prompt = "R> ", continue = "+  ", width = 70, useFancyQuotes = FALSE)
+@
+<<echo=true,results=hide, eval=FALSE>>=
+ install.packages("ccboost")
+@
+ All analyses presented below are contained in a package vignette. The rendered output of the analyses is available by the \proglang{R}-command
+<<echo=true,results=hide, eval=FALSE>>=
+ library("ccboost")
+ vignette("ccbst",package = "ccboost")
+@
+ To reproduce the analyses, one can invoke the \proglang{R} code
+<<echo=true,results=hide,eval=FALSE>>=
+ edit(vignette("ccbst",package = "ccboost"))
+@
+
+\setkeys{Gin}{width=0.4\textwidth}
+\section{Data examples}
+\subsection{Robust boosting for regression}
+In this example, we predict median value of owner-occupied homes in suburbs of Boston, with data publicly available from the UCI machine learning data repository. There are 506 observations and 13 predictors. A different robust estimation can be found in \citet{wang2020unified}.
+<<echo=TRUE, results=hide>>=
+urlname <- "https://archive.ics.uci.edu/ml/"
+filename <- "machine-learning-databases/housing/housing.data"
+dat <- read.table(paste0(urlname, filename), sep="", header=FALSE)
+dat <- as.matrix(dat)
+colnames(dat) <- c("CRIM", "ZN", "INDUS", "CHAS", "NOX", "RM", "AGE", "DIS",    "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+p <- dim(dat)[2]
+@
+We fit a CC-boosting model with concave component \code{bcave} and convex component least squares. The observation weights are plotted. We also display the values of the 4 observations with the smallest weights. These observations are considered outliers.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE>>=
+library("ccboost")
+fit.ls <- ccboost(dat[,-p], dat[,p], cfun="bcave",s=10, dfun="gaussian", verbose=0, max.depth=2, nrounds=50)
+plot(fit.ls$weight_update)
+id <- sort.list(fit.ls$weight_update)[1:4]
+text(id, fit.ls$weight_update[id]-0.02, id, col="red")
+@
+\end{figure}
+We can plot the original median housing price vs the predicted values. Not surprisingly, those 4 observations with the smallest weights have poor predictions.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide>>=
+plot(dat[,p], predict(fit.ls, newdata=dat[, -p]))
+text(dat[id,p], predict(fit.ls, newdata=dat[id, -p])-1, id, col="red")
+@
+\end{figure}
+We can view feature importance/influence from the learned model. The figure shows that the top two factors to predict median housing price are average number of rooms per dwelling (RM) and percentage values of lower status of the population (LSTAT).
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide>>=
+importance_matrix <- xgboost::xgb.importance(model = fit.ls)
+xgboost::xgb.plot.importance(importance_matrix = importance_matrix)
+@
+\end{figure}
+<<eval=FALSE>>=
+gr <- xgboost::xgb.plot.tree(model = fit.ls, trees=0:1)
+@
+%For some reason, pdf doesn't work in Rnw file, only a blank pdf file created
+<<tree, fig=TRUE, pdf=FALSE, png=TRUE, echo=FALSE, include=FALSE>>=
+gr <- xgboost::xgb.plot.tree(model = fit.ls, trees=0:1, render=FALSE)
+library(DiagrammeR)
+export_graph(gr, 'ccbst-tree.png', width=3000, height=4000)
+@
+\begin{figure}[h!]
+\centering
+    \includegraphics{ccbst-tree.png}
+\end{figure}
+\clearpage
+\subsection{Robust logistic boosting}
+A binary classification problem was proposed by \citet{long2010random}. Response variable $y$ is randomly chosen to be -1 or +1 with equal probability. We randomly generate symbols A, B and C with probability 0.25, 0.25 and 0.5, respectively. The predictor vector $\vec x$ with 21 elements is generated as follows. If A is obtained, $x_j=y, j=1, ..., 21$. If B is generated, $x_j=y, i=1, ..., 11, x_j=-y, j=12, ..., 21$. If C is generated, $x_j=y$, where $j$ is
+randomly chosen from 5 out of 1-11, and 6 out of 12-21. For the remaining $j \in (1, 21)$, $x_j=-y$. We generate training data $n=400$ and test data $n=200$. 
+
+We fit a robust logistic boosting model with concave component \code{acave}, where the maximum depth of a tree is 5. Other concave components in Table~\ref{tab:gs} can be applied similarly.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+set.seed(1947)
+dat <- dataLS(ntr=400, nte=200, percon=0)
+fit1 <- ccboost(dat$xtr, dat$ytr, cfun="acave",s=3, dfun="binomial",        verbose=0, max.depth=5, nrounds=50)
+plot(fit1$weight_update)
+@
+\end{figure}
+We can compute prediction error of test data at each boosting iteration.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+err1 <- rep(NA, 100)
+for(i in 1:100){
+ pred1 <- predict(fit1, newdata=dat$xte, ntreelimit=i)
+ err1[i] <- mean(sign(pred1)!=dat$yte)
+}
+plot(err1, type="l")
+@
+\end{figure}
+Furthermore, we simulate data with 10\% contamination of response variables, and compute CC-boosting again.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+dat2 <- dataLS(ntr=400, nte=200, percon=0.1)
+fit2 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=3, dfun="binomial", verbose=0, max.depth=5, nrounds=50)
+plot(fit2$weight_update)
+@
+\end{figure}
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+err2 <- rep(NA, 100)
+for(i in 1:100){
+ pred2 <- predict(fit2, newdata=dat2$xte, ntreelimit=i)
+ err2[i] <- mean(sign(pred2)!=dat2$yte)
+}
+plot(err2, type="l")
+@
+\end{figure}
+In the third robust logistic boosting, we reduce parameter value $\sigma$ (\code{s} in the \code{ccboost} function) for more robust estimation. As a result, some observations would have decreased weights in the model.
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+fit3 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=1, dfun="binomial", verbose=0, max.depth=5, nrounds=50)
+plot(fit3$weight_update)
+@
+\end{figure}
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
+err3 <- rep(NA, 100)
+for(i in 1:100){
+ pred3 <- predict(fit3, newdata=dat2$xte, ntreelimit=i)
+ err3[i] <- mean(sign(pred3)!=dat2$yte)
+}
+plot(err3, type="l")
+@
+\end{figure}
+\clearpage
+\subsection{Robust Poisson boosting}
+ A survey collected from 3066 Americans was studied on health care utilization in lieu of doctor office visits \citep{heritier2009robust}. The data contained 24 risk factors. Robust Poisson regression was conducted in \citet{wang2020unified}. Here robust Poisson boosting model is fitted with concave component \code{ccave}. The observation weights are estimated. 
+The doctor office visits in two years are highlighted for the 8 smallest weights, ranging from 200 to 750. 
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide>>=
+data(docvisits, package="mpath")
+x <- model.matrix(~age+factor(gender)+factor(race)+factor(hispan)
+                     +factor(marital)+factor(arthri)+factor(cancer)
+                     +factor(hipress)+factor(diabet)+factor(lung)+factor(hearth)
+                     +factor(stroke)+factor(psych)+factor(iadla)+factor(adlwa)
+                     +edyears+feduc+meduc+log(income+1)+factor(insur)+0, data=docvisits)
+fit.pos <- ccboost(x, docvisits$visits, cfun="ccave",s=20, dfun="poisson", verbose=0, max.depth=1, nrounds=50)
+plot(fit.pos$weight_update)
+id <- sort.list(fit.pos$weight_update)[1:8]
+text(id, fit.pos$weight_update[id]-0.02, docvisits$visits[id], col="red")
+@
+\end{figure}
+We can view feature importance/influence from the learned model. The figure shows that the top two reasons of doctor office visits are heart disease and psychiatric problems. 
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, echo=TRUE, results=hide>>=
+importance_matrix <- xgboost::xgb.importance(model = fit.pos)
+xgboost::xgb.plot.importance(importance_matrix = importance_matrix)
+@
+\end{figure}
+\section{Conclusion}
+ In this article we propose CC-boosting as a unified robust boosting algorithm, and illustrate its applications in regression, classification and Poisson regression. The method can be used for outlier detection and can reduce the impact of outliers. Based on existing weighted boosting software, we can determine variable importance and explore the trees from the boosting algorithm. The \proglang{R} \pkg{ccboost} is a useful tool in the machine learning applications.
+\bibliography{ccbst}
+
+\end{document}
+
