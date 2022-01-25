@@ -23,7 +23,8 @@
  
 %\SweaveOpts{engine=R,eps=false,strip.white=true, width=6, height=6}
 %\SweaveOpts{engine=R,eps=false,prefix.string=fig/plot,strip.white=true,  width=6,height=6}
-\SweaveOpts{keep.source=FALSE}
+%%% Preserve comments and spacing of echoed R
+\SweaveOpts{keep.source=TRUE}
 \author{Zhu Wang\\UT Health San Antonio}
 \title{Unified Robust Boosting}
 
@@ -32,7 +33,7 @@
 \Shorttitle{Unified Robust Boosting}
 \Abstract{
 Boosting is a popular machine learning algorithm in regression and classification problems. Boosting can combine a sequence of regression trees to obtain accurate prediction. In the presence of outliers, traditional boosting, based on optimizing convex loss functions, may show inferior results. In this article, a unified robust boosting is proposed for more resistant estimation. The method utilizes a recently developed concave-convex family for robust estimation, composite optimization by conjugation operator, and functional decent boosting. As a result, an
-iteratively reweighted boosting algorithm can be conveniently constructed with existing software. Applications in robust regression, classification and Poisson regression are demonstrated in the \proglang{R} package \pkg{ccboost}. 
+iteratively reweighted boosting algorithm can be conveniently constructed with existing software. For practitioners interested in the boosting algorithm, this paper also introduces a method how to tune in observation weights, which is often ignored due to a lack of guidance. Applications in robust regression, classification and Poisson regression are demonstrated in the \proglang{R} package \pkg{ccboost}. More implementations can be found in the package.
 }
 \Keywords{Robust method, CC-family, CC-estimation, CC-boosting, boosting, COCO}
 \Plainkeywords{Robust method, CC-family, CC-estimation, CC-boosting, boosting, COCO}
@@ -53,7 +54,7 @@ estimation. \citet{wang2018quadratic, wang2018robust} proposed robust functional
 
 Recently, \citet{wang2020unified} innovatively proposed a unified robust loss function family, the concave convex (CC) family, and introduced the composite optimization by conjugation operator (COCO) to obtain the CC-estimation. The CC-family includes traditional robust loss functions such as the Huber loss, robust hinge loss for support vector machine, and robust exponential family for generalized linear models. The COCO algorithm is an iteratively 
 reweighted estimation and can be conveniently implemented from the existing methods and software. In this article, we integrate the COCO and boosting to obtain CC-estimation in the context of function estimation, which is more broad than the linear predictor function in \citet{wang2020unified}. For instance, the CC-boosting algorithm permits function space derived from the regression trees. We
-illustrate the proposed algorithm through the \pkg{ccboost} \proglang{R} package with applications to robust exponential family, including regression, binary classification and Poisson regression. 
+illustrate the proposed algorithm through the \pkg{ccboost} \proglang{R} package with applications to robust exponential family, including regression, binary classification and Poisson regression. The package also implements robust Gamma regression, Tweedie regression and hinge regression.
 \section{Robust CC-boosting}\label{sec:robust}
 \subsection{CC-function estimation}\label{sec:dcb}
 To unify robust estimation, \citet{wang2020unified} proposed the concave convex (CC) family with functions $\Gamma$ satisfying the following conditions:
@@ -240,7 +241,8 @@ urlname <- "https://archive.ics.uci.edu/ml/"
 filename <- "machine-learning-databases/housing/housing.data"
 dat <- read.table(paste0(urlname, filename), sep="", header=FALSE)
 dat <- as.matrix(dat)
-colnames(dat) <- c("CRIM", "ZN", "INDUS", "CHAS", "NOX", "RM", "AGE", "DIS",    "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+colnames(dat) <- c("CRIM", "ZN", "INDUS", "CHAS", "NOX", "RM", "AGE", 
+                   "DIS", "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
 p <- dim(dat)[2]
 @
 We fit a CC-boosting model with concave component \code{bcave} and convex component least squares. The observation weights are plotted. We also display the values of the 4 observations with the smallest weights. These observations are considered outliers.
@@ -248,7 +250,9 @@ We fit a CC-boosting model with concave component \code{bcave} and convex compon
 \centering
 <<fig=TRUE, echo=TRUE>>=
 library("ccboost")
-fit.ls <- ccboost(dat[,-p], dat[,p], cfun="bcave",s=10, dfun="gaussian", verbose=0, max.depth=2, nrounds=50)
+fit.ls <- ccboost(dat[,-p], dat[,p], cfun="bcave",s=10, 
+                  dfun="reg:squarederror", verbose=0, 
+                  max.depth=2, nrounds=50)
 plot(fit.ls$weight_update)
 id <- sort.list(fit.ls$weight_update)[1:4]
 text(id, fit.ls$weight_update[id]-0.02, id, col="red")
@@ -260,6 +264,18 @@ We can plot the original median housing price vs the predicted values. Not surpr
 <<fig=TRUE, echo=TRUE, results=hide>>=
 plot(dat[,p], predict(fit.ls, newdata=dat[, -p]))
 text(dat[id,p], predict(fit.ls, newdata=dat[id, -p])-1, id, col="red")
+@
+\end{figure}
+\begin{figure}[h!]
+\centering
+    The COCO algorithm in \pkg{ccboost} is a weighted xgboost, where the weights are tuned by robust argument. This can be illustrated below.
+<<fig=TRUE>>=
+library("xgboost")
+fit.xg <- xgboost(dat[,-p], dat[,p], weight=fit.ls$weight_update, 
+                  objective="reg:squarederror", verbose=0, max.depth=2, 
+                  nrounds=fit.ls$niter)
+plot(predict(fit.ls, newdata=dat[, -p]), predict(fit.xg, newdata=dat[, -p]))
+abline(0, 1, col="red")
 @
 \end{figure}
 We can view feature importance/influence from the learned model. The figure shows that the top two factors to predict median housing price are average number of rooms per dwelling (RM) and percentage values of lower status of the population (LSTAT).
@@ -294,7 +310,8 @@ We fit a robust logistic boosting model with concave component \code{acave}, whe
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
 set.seed(1947)
 dat <- dataLS(ntr=400, nte=200, percon=0)
-fit1 <- ccboost(dat$xtr, dat$ytr, cfun="acave",s=3, dfun="binomial",        verbose=0, max.depth=5, nrounds=50)
+fit1 <- ccboost(dat$xtr, dat$ytr, cfun="acave",s=3, dfun="binary:logitraw", 
+                verbose=0, max.depth=5, nrounds=50)
 plot(fit1$weight_update)
 @
 \end{figure}
@@ -303,8 +320,8 @@ We can compute prediction error of test data at each boosting iteration.
 \centering
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
 err1 <- rep(NA, 100)
-for(i in 1:100){
- pred1 <- predict(fit1, newdata=dat$xte, ntreelimit=i)
+for(i in 1:fit1$niter){
+ pred1 <- predict(fit1, newdata=dat$xte, iterationrange=c(1, i+1))
  err1[i] <- mean(sign(pred1)!=dat$yte)
 }
 plot(err1, type="l")
@@ -315,7 +332,8 @@ Furthermore, we simulate data with 10\% contamination of response variables, and
 \centering
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
 dat2 <- dataLS(ntr=400, nte=200, percon=0.1)
-fit2 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=3, dfun="binomial", verbose=0, max.depth=5, nrounds=50)
+fit2 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=3, dfun="binary:logitraw", 
+                verbose=0, max.depth=5, nrounds=50)
 plot(fit2$weight_update)
 @
 \end{figure}
@@ -323,8 +341,8 @@ plot(fit2$weight_update)
 \centering
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
 err2 <- rep(NA, 100)
-for(i in 1:100){
- pred2 <- predict(fit2, newdata=dat2$xte, ntreelimit=i)
+for(i in 1:fit2$niter){
+ pred2 <- predict(fit2, newdata=dat2$xte, iterationrange=c(1, i+1))
  err2[i] <- mean(sign(pred2)!=dat2$yte)
 }
 plot(err2, type="l")
@@ -334,7 +352,8 @@ In the third robust logistic boosting, we reduce parameter value $\sigma$ (\code
 \begin{figure}[h!]
 \centering
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
-fit3 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=1, dfun="binomial", verbose=0, max.depth=5, nrounds=50)
+fit3 <- ccboost(dat2$xtr, dat2$ytr, cfun="acave",s=1, dfun="binary:logitraw", 
+                verbose=0, max.depth=5, nrounds=50)
 plot(fit3$weight_update)
 @
 \end{figure}
@@ -342,13 +361,63 @@ plot(fit3$weight_update)
 \centering
 <<fig=TRUE, echo=TRUE, results=hide, eval=TRUE>>=
 err3 <- rep(NA, 100)
-for(i in 1:100){
- pred3 <- predict(fit3, newdata=dat2$xte, ntreelimit=i)
+for(i in 1:fit3$niter){
+ pred3 <- predict(fit3, newdata=dat2$xte, iterationrange=c(1, i+1))
  err3[i] <- mean(sign(pred3)!=dat2$yte)
 }
 plot(err3, type="l")
 @
 \end{figure}
+\clearpage
+\subsection{Robust multiclass boosting}
+In a 3-class classification in iris dataset, \pkg{xgboost} generates classification error 0.02.
+Letting the initial boosting parameters the same, the COCO algorithm in \pkg{ccboost} automatically updates the observation weights and leads to a different decision while maintaining similar classification accuracy.
+<<echo=TRUE, eval=TRUE, results=hide>>=
+lb <- as.numeric(iris$Species)-1
+num_class <- 3
+set.seed(11)
+# xgboost
+bst <- xgboost(data=as.matrix(iris[, -5]), label=lb, max_depth=4, 
+               eta=0.5, nthread=2, nrounds=10, subsample=0.5, 
+               objective="multi:softprob", num_class=num_class)
+# predict for softmax returns num_class probability numbers per case:
+pred <- predict(bst, as.matrix(iris[, -5]))
+# reshape it to a num_class-columns matrix
+pred <- matrix(pred, ncol=num_class, byrow=TRUE)
+# convert the probabilities to softmax labels
+pred_labels <- max.col(pred)-1
+<<echo=TRUE, eval=TRUE>>=
+# classification error
+sum(pred_labels!=lb)/length(lb)
+@
+<<results=hide>>=
+# ccboost
+bst_cc <- ccboost(x=as.matrix(iris[, -5]), y=lb, cfun="acave", s=50, 
+                dfun="multi:softprob", trace=FALSE, verbose=0, 
+                max.depth=4, eta=0.5, nthread=2, nrounds=10, 
+                subsample=0.5, num_class=num_class)
+@
+\begin{figure}[h!]
+\centering
+<<fig=TRUE>>=
+plot(bst_cc$weight_update)
+@
+\end{figure}
+The weights are shown in a figure blow. Rerun \code{xgboost} but with new weights from \code{ccboost}. Compare model \code{bst} and \code{fit7}, with small change of weights, a different classification rule is obtained with similar error.
+<<results=hide>>=
+fit7 <- xgboost(data=as.matrix(iris[, -5]), label=lb, 
+                weight=bst_cc$weight_update, max_depth=4, 
+                eta=0.5, nthread=2, nrounds=10, subsample=0.5, 
+                objective="multi:softprob", num_class=num_class)
+pred7 <- predict(fit7, as.matrix(iris[, -5]))
+pred7 <- matrix(pred7, ncol=num_class, byrow=TRUE)
+# convert the probabilities to softmax labels
+pred7_labels <- max.col(pred7) - 1
+<<echo=TRUE, eval=TRUE>>=
+# classification error
+sum(pred7_labels != lb)/length(lb)
+table(pred_labels, pred7_labels)
+@
 \clearpage
 \subsection{Robust Poisson boosting}
  A survey collected from 3066 Americans was studied on health care utilization in lieu of doctor office visits \citep{heritier2009robust}. The data contained 24 risk factors. Robust Poisson regression was conducted in \citet{wang2020unified}. Here robust Poisson boosting model is fitted with concave component \code{ccave}. The observation weights are estimated. 
@@ -359,10 +428,12 @@ The doctor office visits in two years are highlighted for the 8 smallest weights
 data(docvisits, package="mpath")
 x <- model.matrix(~age+factor(gender)+factor(race)+factor(hispan)
                      +factor(marital)+factor(arthri)+factor(cancer)
-                     +factor(hipress)+factor(diabet)+factor(lung)+factor(hearth)
-                     +factor(stroke)+factor(psych)+factor(iadla)+factor(adlwa)
-                     +edyears+feduc+meduc+log(income+1)+factor(insur)+0, data=docvisits)
-fit.pos <- ccboost(x, docvisits$visits, cfun="ccave",s=20, dfun="poisson", verbose=0, max.depth=1, nrounds=50)
+                     +factor(hipress)+factor(diabet)+factor(lung)
+                     +factor(hearth)+factor(stroke)+factor(psych)
+                     +factor(iadla)+factor(adlwa)+edyears+feduc
+                     +meduc+log(income+1)+factor(insur)+0, data=docvisits)
+fit.pos <- ccboost(x, docvisits$visits, cfun="ccave",s=20, 
+                   dfun="count:poisson", verbose=0, max.depth=1, nrounds=50)
 plot(fit.pos$weight_update)
 id <- sort.list(fit.pos$weight_update)[1:8]
 text(id, fit.pos$weight_update[id]-0.02, docvisits$visits[id], col="red")
@@ -376,8 +447,10 @@ importance_matrix <- xgboost::xgb.importance(model = fit.pos)
 xgboost::xgb.plot.importance(importance_matrix = importance_matrix)
 @
 \end{figure}
+\clearpage
 \section{Conclusion}
- In this article we propose CC-boosting as a unified robust boosting algorithm, and illustrate its applications in regression, classification and Poisson regression. The method can be used for outlier detection and can reduce the impact of outliers. Based on existing weighted boosting software, we can determine variable importance and explore the trees from the boosting algorithm. The \proglang{R} \pkg{ccboost} is a useful tool in the machine learning applications.
+ In this article we propose CC-boosting as a unified robust boosting algorithm, and illustrate its applications in regression, classification and Poisson regression. The method can be used for outlier detection and can reduce the impact of outliers. Based on existing weighted boosting software, we can determine variable importance and explore the trees from the boosting algorithm. The \proglang{R} \pkg{ccboost} is a useful tool in the machine learning applications. It is worth noting
+ that the Cox regression in survival analysis is based on partial likelihood function, which doesn't follow the COCO algorithm.
 \bibliography{ccbst}
 
 \end{document}
